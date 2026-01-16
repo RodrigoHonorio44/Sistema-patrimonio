@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { db, auth } from "../api/firebase";
+import { db, auth } from "../api/iFrebase";
 import { initializeApp } from "firebase/app";
 import {
   getAuth,
@@ -39,7 +39,7 @@ import {
 } from "react-icons/fi";
 import { toast } from "react-toastify";
 
-import app from "../api/firebase";
+import app from "../api/Firebase";
 import FormAnalista from "../components/FormAnalista";
 import FormUsuario from "../components/FormUsuario";
 import Header from "../components/Header";

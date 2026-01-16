@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 
 // Importação das configurações e funções do Firebase
-import { auth, db } from "../api/firebase"; 
+import { auth, db } from "../api/Firebase"; 
 import { collection, onSnapshot, doc, getDoc } from "firebase/firestore";
 import { useNavigate, useLocation } from "react-router-dom";
 
