@@ -4,11 +4,11 @@ import { doc, onSnapshot, collection, addDoc, serverTimestamp, query, orderBy, l
 import { useNavigate } from "react-router-dom";
 import { 
   ClipboardList, Users, LayoutDashboard, PlusCircle, 
-  ArrowRightLeft, Lock, LogOut, UserPlus, Eye 
+  ArrowRightLeft, Lock, LogOut, UserPlus, Eye, PauseCircle 
 } from "lucide-react";
 import { toast } from "react-toastify";
 
-// IMPORTAÇÃO DOS SEUS COMPONENTES (IGUAIS AOS DA HOME)
+// IMPORTAÇÃO DOS SEUS COMPONENTES
 import CadastroChamado from "../components/CadastroChamado";
 import ModalDetalhes from "../components/ModalDetalhes";
 
@@ -23,7 +23,7 @@ export default function PainelCoordenacao() {
   const [modalChamadoAberto, setModalChamadoAberto] = useState(false);
   const [chamadoSelecionado, setChamadoSelecionado] = useState(null);
   
-  // Lista de atividades para o Coordenador visualizar
+  // Lista de atividades
   const [atividades, setAtividades] = useState([]);
 
   // Estado do Formulário de Remanejo
@@ -45,10 +45,14 @@ export default function PainelCoordenacao() {
         setLoading(false);
       });
 
-      // Busca os últimos chamados/remanejamentos para a lista
-      const q = query(collection(db, "chamados"), orderBy("dataCriacao", "desc"), limit(5));
+      // Busca os últimos chamados/remanejamentos
+      // Note que "criadoEm" ou "dataCriacao" deve bater com o nome do campo no seu banco
+      const q = query(collection(db, "chamados"), orderBy("criadoEm", "desc"), limit(10));
       const unsubAtividades = onSnapshot(q, (snapshot) => {
-        const lista = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const lista = snapshot.docs.map(doc => ({ 
+          id: doc.id, 
+          ...doc.data() // Aqui o motivoPausa já entra no objeto automaticamente
+        }));
         setAtividades(lista);
       });
 
@@ -57,7 +61,7 @@ export default function PainelCoordenacao() {
     verificarAcesso();
   }, [navigate]);
 
-  // Função necessária para o ModalDetalhes funcionar
+  // Função de cálculo de SLA (SLA total até o momento ou finalização)
   const calcularSLA = (inicio, fim) => {
     if (!inicio) return "---";
     const dataInicio = inicio.toDate();
@@ -71,7 +75,7 @@ export default function PainelCoordenacao() {
   const handleRemanejar = async (e) => {
     e.preventDefault();
     try {
-      await addDoc(collection(db, "chamados"), { // Salvando como tipo remanejamento para aparecer no modal
+      await addDoc(collection(db, "chamados"), {
         ...formDataRemanejo,
         tipo: "REMANEJAMENTO TÉCNICO",
         status: "fechado",
@@ -112,14 +116,12 @@ export default function PainelCoordenacao() {
       {/* CONTEÚDO */}
       <main className="flex-1 p-8 lg:p-16 overflow-y-auto">
         <header className="mb-12">
-          <h1 className="text-6xl font-black text-slate-900 italic uppercase leading-none">
-            {abaAtiva === "chamados" ? "Gestão de <span class='text-blue-600'>Suporte</span>" : "Gestão de <span class='text-blue-600'>Equipe</span>"}
+           <h1 className="text-6xl font-black text-slate-900 italic uppercase leading-none">
+            {abaAtiva === "chamados" ? "Gestão de Suporte" : "Gestão de Equipe"}
           </h1>
         </header>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-12">
-          
-          {/* COLUNA DA ESQUERDA: FORMULÁRIOS */}
           <section>
             {abaAtiva === "chamados" ? (
               <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl text-center">
@@ -148,36 +150,46 @@ export default function PainelCoordenacao() {
             )}
           </section>
 
-          {/* COLUNA DA DIREITA: LISTA PARA USAR O MODAL DETALHES */}
+          {/* LISTA DE ATIVIDADES */}
           <section className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl">
             <h3 className="text-xs font-black uppercase text-slate-400 tracking-[0.3em] mb-6 flex items-center gap-2">
               <Eye size={14}/> Atividades Recentes
             </h3>
             <div className="space-y-4">
-              {atividades.map((item) => (
-                <div key={item.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl hover:bg-slate-100 transition-all group">
-                  <div>
-                    <p className="text-[10px] font-black text-blue-600 uppercase">#{item.numeroOs || "S/N"}</p>
-                    <p className="text-sm font-bold text-slate-700 truncate max-w-[200px]">{item.assunto || item.tipo}</p>
+              {atividades.map((item) => {
+                const isPausado = item.status?.toLowerCase() === "pausado";
+                
+                return (
+                  <div key={item.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl hover:bg-slate-100 transition-all group">
+                    <div className="flex items-center gap-4">
+                      {/* ÍCONE DE PAUSA CASO O STATUS SEJA PAUSADO */}
+                      {isPausado && <PauseCircle size={18} className="text-orange-500 animate-pulse" />}
+                      <div>
+                        <p className="text-[10px] font-black text-blue-600 uppercase">#{item.numeroOs || "S/N"}</p>
+                        <p className="text-sm font-bold text-slate-700 truncate max-w-[200px]">{item.assunto || item.tipo}</p>
+                        {isPausado && <span className="text-[9px] text-orange-600 font-bold uppercase italic leading-none">SLA Pausado</span>}
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => setChamadoSelecionado(item)} // Envia o item completo com motivoPausa
+                      className="p-3 bg-white text-slate-400 rounded-xl group-hover:text-blue-600 shadow-sm transition-all"
+                    >
+                      <Eye size={18} />
+                    </button>
                   </div>
-                  <button 
-                    onClick={() => setChamadoSelecionado(item)}
-                    className="p-3 bg-white text-slate-400 rounded-xl group-hover:text-blue-600 shadow-sm transition-all"
-                  >
-                    <Eye size={18} />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         </div>
 
-        {/* MODAIS INTEGRADOS */}
+        {/* MODAIS */}
         <CadastroChamado 
           isOpen={modalChamadoAberto} 
           onClose={() => setModalChamadoAberto(false)} 
         />
 
+        {/* Aqui o modal vai receber o chamadoSelecionado que já tem o motivoPausa */}
         <ModalDetalhes 
           chamado={chamadoSelecionado} 
           aoFechar={() => setChamadoSelecionado(null)} 

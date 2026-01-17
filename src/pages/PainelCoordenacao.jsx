@@ -32,45 +32,52 @@ export default function Login() {
       if (userDocSnap.exists()) {
         const userData = userDocSnap.data();
 
-        // 1. Verificação de troca de senha obrigatória
+        // 1. Verificação de Licença/Status (Segurança adicional)
+        if (userData.statusLicenca === "bloqueada") {
+          setError("Acesso bloqueado. Entre em contato com o administrador.");
+          await auth.signOut();
+          setLoading(false);
+          return;
+        }
+
+        // 2. Troca de senha obrigatória
         if (userData.requiresPasswordChange === true) {
           toast.info("Primeiro acesso. Por favor, altere sua senha.");
           navigate("/trocar-senha");
           return;
         }
 
-        // 2. Normalização do Role (Garante que espaços ou maiúsculas não quebrem a lógica)
+        // 3. Normalização do Role
         const userRole = userData.role ? String(userData.role).toLowerCase().trim() : "user";
 
-        // 3. LÓGICA DE REDIRECIONAMENTO POR NÍVEL (HIERARQUIA)
+        // 4. Redirecionamento Inteligente
+        // Agora alinhado com o PainelCoordenacao que você criou
         if (userRole === "coordenador") {
-          // Prioridade para o Coordenador
+          toast.success(`Bem-vindo, Coordenador ${userData.nome || ""}`);
           navigate("/coordenacao");
         } 
         else if (userRole === "analista" || userRole === "admin") {
-          // Analistas e Admins para o Dashboard principal
+          toast.success("Acesso autorizado: Painel Técnico");
           navigate("/dashboard");
         } 
         else {
-          // Usuários comuns ou sem role definido vão para Home
           navigate("/home");
         }
 
       } else {
-        // Se o usuário não tiver documento no Firestore
+        // Fallback caso o documento não exista
         navigate("/home");
       }
     } catch (err) {
       console.error("Erro no login:", err);
-      if (
-        err.code === "auth/user-not-found" ||
-        err.code === "auth/wrong-password" ||
-        err.code === "auth/invalid-credential"
-      ) {
-        setError("E-mail ou senha incorretos.");
-      } else {
-        setError("Erro ao acessar o sistema.");
-      }
+      // Tratamento de erros amigável
+      const errorMessages = {
+        "auth/user-not-found": "Usuário não cadastrado.",
+        "auth/wrong-password": "Senha incorreta.",
+        "auth/invalid-credential": "E-mail ou senha inválidos.",
+        "auth/too-many-requests": "Muitas tentativas. Tente mais tarde."
+      };
+      setError(errorMessages[err.code] || "Erro ao acessar o sistema.");
     } finally {
       setLoading(false);
     }
@@ -80,6 +87,7 @@ export default function Login() {
     <div className="min-h-screen bg-white flex font-sans">
       {/* LADO ESQUERDO: Visual Hospitalar */}
       <div className="hidden lg:flex w-1/2 bg-blue-600 items-center justify-center p-12 relative overflow-hidden">
+        {/* Efeitos de Vidro/Blur */}
         <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-blue-500 rounded-full opacity-50 blur-3xl"></div>
         <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 bg-indigo-500 rounded-full opacity-50 blur-3xl"></div>
 
@@ -104,8 +112,7 @@ export default function Login() {
           </h1>
 
           <p className="text-blue-100 text-xl leading-relaxed font-medium opacity-90">
-            Plataforma inteligente para gestão de ativos e suporte técnico
-            hospitalar.
+            Plataforma inteligente para gestão de ativos e suporte técnico hospitalar.
           </p>
         </div>
       </div>
@@ -117,20 +124,14 @@ export default function Login() {
             <h3 className="text-4xl font-black text-slate-900 tracking-tighter uppercase italic leading-none">
               RODHON<span className="text-blue-600">SYSTEM</span>
             </h3>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.5em] mt-3">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.5em] mt-3 text-center">
               Technology Solutions
             </p>
           </div>
 
           <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl shadow-slate-200 border border-slate-100">
-            <div className="mb-8 text-center">
-              <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">
-                Identificação de Usuário
-              </p>
-            </div>
-
             {error && (
-              <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-600 rounded-r-xl flex items-center gap-3 text-sm font-bold">
+              <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-600 rounded-r-xl flex items-center gap-3 text-sm font-bold animate-shake">
                 <AlertCircle size={20} />
                 {error}
               </div>
@@ -178,7 +179,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-black py-5 rounded-2xl shadow-xl shadow-blue-200 transition-all flex items-center justify-center gap-3 uppercase tracking-[0.2em] text-sm mt-4"
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-black py-5 rounded-2xl shadow-xl shadow-blue-200 transition-all flex items-center justify-center gap-3 uppercase tracking-[0.2em] text-sm mt-4 cursor-pointer"
               >
                 {loading ? (
                   <Loader2 className="animate-spin" size={24} />

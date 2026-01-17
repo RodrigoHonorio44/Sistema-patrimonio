@@ -9,14 +9,14 @@ import {
 } from "react-icons/fi";
 
 const FormUsuario = ({ dados, setDados, onSubmit, loading }) => {
-  // Validação local para habilitar o botão
+  // Validação aprimorada: .trim() garante que não haja apenas espaços vazios
   const isFormValid =
-    dados.nome &&
-    dados.email &&
+    dados.nome?.trim() &&
+    dados.email?.trim() &&
     dados.senha?.length >= 6 &&
     dados.unidade &&
     dados.cargoH &&
-    dados.matricula;
+    dados.matricula?.trim();
 
   return (
     <div className="bg-white p-8 rounded-4xl shadow-xl border-2 border-slate-900 mb-8 animate-in fade-in zoom-in duration-300">
@@ -36,16 +36,8 @@ const FormUsuario = ({ dados, setDados, onSubmit, loading }) => {
         autoComplete="off"
       >
         {/* HONEYPOT ANTI-AUTOFILL */}
-        <input
-          style={{ display: "none" }}
-          type="text"
-          name="prevent_autofill_user"
-        />
-        <input
-          style={{ display: "none" }}
-          type="password"
-          name="prevent_autofill_pass"
-        />
+        <input style={{ display: "none" }} type="text" name="prevent_autofill_user" />
+        <input style={{ display: "none" }} type="password" name="prevent_autofill_pass" />
 
         {/* NOME */}
         <div className="flex flex-col gap-1">
@@ -57,7 +49,7 @@ const FormUsuario = ({ dados, setDados, onSubmit, loading }) => {
             placeholder="Ex: João Silva"
             required
             className="p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 ring-slate-900 transition-all font-bold text-sm"
-            value={dados.nome}
+            value={dados.nome || ""}
             onChange={(e) => setDados({ ...dados, nome: e.target.value })}
           />
         </div>
@@ -72,7 +64,7 @@ const FormUsuario = ({ dados, setDados, onSubmit, loading }) => {
             placeholder="email@empresa.com"
             required
             className="p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 ring-slate-900 transition-all font-bold text-sm"
-            value={dados.email}
+            value={dados.email || ""}
             onChange={(e) => setDados({ ...dados, email: e.target.value })}
           />
         </div>
@@ -87,7 +79,7 @@ const FormUsuario = ({ dados, setDados, onSubmit, loading }) => {
             placeholder="000000"
             required
             className="p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 ring-slate-900 transition-all font-bold text-sm"
-            value={dados.matricula}
+            value={dados.matricula || ""}
             onChange={(e) => setDados({ ...dados, matricula: e.target.value })}
           />
         </div>
@@ -100,7 +92,7 @@ const FormUsuario = ({ dados, setDados, onSubmit, loading }) => {
           <select
             className="p-4 bg-slate-50 rounded-2xl outline-none border-none focus:ring-2 ring-slate-900 transition-all cursor-pointer font-bold shadow-sm text-sm"
             required
-            value={dados.unidade}
+            value={dados.unidade || ""}
             onChange={(e) => setDados({ ...dados, unidade: e.target.value })}
           >
             <option value="">Selecione a Unidade...</option>
@@ -121,7 +113,7 @@ const FormUsuario = ({ dados, setDados, onSubmit, loading }) => {
           <select
             className="p-4 bg-slate-50 rounded-2xl outline-none border-none focus:ring-2 ring-slate-900 transition-all cursor-pointer font-bold shadow-sm text-sm"
             required
-            value={dados.cargoH}
+            value={dados.cargoH || ""}
             onChange={(e) => setDados({ ...dados, cargoH: e.target.value })}
           >
             <option value="">Selecione o Cargo...</option>
@@ -131,9 +123,7 @@ const FormUsuario = ({ dados, setDados, onSubmit, loading }) => {
             <option value="Enfermeiro(a)">Enfermeiro(a)</option>
             <option value="Recepcionista">Recepcionista</option>
             <option value="Supervisao">Supervisão</option>
-            <option value="Tecnico(a) de Enfermagem">
-              Técnico(a) de Enfermagem
-            </option>
+            <option value="Tecnico(a) de Enfermagem">Técnico(a) de Enfermagem</option>
           </select>
         </div>
 
@@ -147,7 +137,7 @@ const FormUsuario = ({ dados, setDados, onSubmit, loading }) => {
             placeholder="••••••••"
             required
             className="p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 ring-slate-900 transition-all font-bold text-sm"
-            value={dados.senha}
+            value={dados.senha || ""}
             onChange={(e) => setDados({ ...dados, senha: e.target.value })}
           />
         </div>
@@ -162,9 +152,7 @@ const FormUsuario = ({ dados, setDados, onSubmit, loading }) => {
               required
               className="p-4 bg-white rounded-2xl outline-none border-2 border-transparent focus:border-slate-900 transition-all font-black text-xs cursor-pointer shadow-sm"
               value={dados.prazoLicenca || "30"}
-              onChange={(e) =>
-                setDados({ ...dados, prazoLicenca: e.target.value })
-              }
+              onChange={(e) => setDados({ ...dados, prazoLicenca: e.target.value })}
             >
               <option value="7">Trial (07 Dias)</option>
               <option value="30">Padrão (30 Dias)</option>

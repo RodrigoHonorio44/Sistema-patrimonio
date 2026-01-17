@@ -20,6 +20,8 @@ import {
   PieChart,
   User,
   Truck,
+  Eye, // Adicionado conforme solicitado
+  EyeOff // Adicionado conforme solicitado
 } from "lucide-react";
 
 // Importação das configurações e funções do Firebase
@@ -32,6 +34,7 @@ export default function Dashboard() {
   const location = useLocation();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [viewOnly, setViewOnly] = useState(false); // ESTADO PARA MODO VISUALIZAÇÃO
   const [estatisticas, setEstatisticas] = useState({
     abertos: 0,
     fechados: 0,
@@ -42,7 +45,6 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Carregar dados do perfil do usuário logado
     const loadUserData = async () => {
       const currentUser = auth.currentUser;
       if (currentUser) {
@@ -61,7 +63,6 @@ export default function Dashboard() {
 
     loadUserData();
 
-    // 2. Escutar atualizações de chamados em tempo real
     const unsubscribeChamados = onSnapshot(
       collection(db, "chamados"),
       (snapshot) => {
@@ -81,11 +82,12 @@ export default function Dashboard() {
     return () => unsubscribeChamados();
   }, []);
 
-  // Memorização de papéis/roles
+  // Lógica de acesso: Super Usuário (Root) acessa tudo automaticamente
   const isRoot = useMemo(
     () => userData?.role?.toLowerCase() === "root",
     [userData]
   );
+  
   const isAdmin = useMemo(
     () =>
       userData?.cargo?.toUpperCase() === "ADMINISTRADOR" ||
@@ -94,7 +96,7 @@ export default function Dashboard() {
   );
 
   const temAcesso = (moduloId) => {
-    if (isRoot) return true;
+    if (isRoot) return true; // Super usuário sempre tem acesso
     return userData?.permissoesExtras?.[moduloId] === true;
   };
 
@@ -115,14 +117,17 @@ export default function Dashboard() {
     );
   }
 
-  // Componente interno para botões de navegação
+  // Componente interno para botões de navegação com bloqueio ViewOnly
   const NavButton = ({ icon: Icon, label, path, moduloId }) => {
     if (moduloId && !temAcesso(moduloId)) return null;
     const active = location.pathname === path;
     return (
       <button
-        onClick={() => navigate(path)}
-        className={`flex items-center gap-4 w-full px-4 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all duration-300 group cursor-pointer ${
+        onClick={() => !viewOnly && navigate(path)} // Bloqueia navegação no modo viewOnly
+        disabled={viewOnly}
+        className={`flex items-center gap-4 w-full px-4 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all duration-300 group ${
+          viewOnly ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+        } ${
           active
             ? "bg-blue-600 text-white shadow-xl shadow-blue-100"
             : "text-slate-500 hover:bg-white hover:text-blue-600"
@@ -139,11 +144,10 @@ export default function Dashboard() {
 
   return (
     <div className="flex h-screen bg-[#F8FAFC] overflow-hidden font-sans antialiased text-slate-900">
+      
       {/* SIDEBAR */}
       <aside
-        className={`relative ${
-          sidebarOpen ? "w-72" : "w-24"
-        } bg-[#F1F5F9] border-r border-slate-200/60 hidden md:flex flex-col z-50 transition-all duration-500`}
+        className={`relative ${sidebarOpen ? "w-72" : "w-24"} bg-[#F1F5F9] border-r border-slate-200/60 hidden md:flex flex-col z-50 transition-all duration-500`}
       >
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -248,32 +252,52 @@ export default function Dashboard() {
             </h1>
           </div>
 
-          <div className="flex items-center gap-6">
-            <div className="flex flex-col items-end">
-              <div className="flex items-center gap-2">
-                <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[9px] font-black uppercase tracking-tighter">
-                  {unidadeExibicao}
-                </span>
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                  Usuário
-                </span>
+          <div className="flex items-center gap-4 md:gap-8">
+            {/* BOTÃO DE MODO VISUALIZAÇÃO */}
+            <button 
+              onClick={() => setViewOnly(!viewOnly)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all font-bold text-[10px] uppercase tracking-widest ${
+                viewOnly 
+                ? "bg-amber-50 border-amber-200 text-amber-600 shadow-sm" 
+                : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100"
+              }`}
+            >
+              {viewOnly ? <EyeOff size={16} /> : <Eye size={16} />}
+              <span className="hidden sm:inline">{viewOnly ? "Modo Leitura ON" : "Modo Visualização"}</span>
+            </button>
+
+            <div className="flex items-center gap-4">
+              <div className="flex flex-col items-end">
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[9px] font-black uppercase tracking-tighter">
+                    {unidadeExibicao}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                    Usuário
+                  </span>
+                </div>
+                <h3 className="text-lg font-black text-slate-800 uppercase italic leading-tight mt-0.5">
+                  {nomeExibicao}
+                </h3>
               </div>
-              <h3 className="text-lg font-black text-slate-800 uppercase italic leading-tight mt-0.5">
-                {nomeExibicao}
-              </h3>
-            </div>
-            <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-700 rounded-2xl shadow-lg shadow-blue-200 flex items-center justify-center text-white">
-              <User size={28} strokeWidth={2.5} />
+              <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-700 rounded-2xl shadow-lg shadow-blue-200 flex items-center justify-center text-white">
+                <User size={28} strokeWidth={2.5} />
+              </div>
             </div>
           </div>
         </header>
 
-        <section className="flex-1 overflow-y-auto p-10 bg-[#F8FAFC]">
+        <section className={`flex-1 overflow-y-auto p-10 bg-[#F8FAFC] transition-opacity duration-300 ${viewOnly ? 'opacity-90' : 'opacity-100'}`}>
           <div className="max-w-7xl mx-auto">
-            <div className="flex justify-between items-end mb-12">
+            <div className="flex flex-col mb-12">
               <h1 className="text-4xl font-black text-slate-900">
                 Olá, {nomeExibicao.split(" ")[0]}!
               </h1>
+              {viewOnly && (
+                <span className="text-sm font-medium text-amber-600 mt-2 italic">
+                  Você está visualizando como Super Usuário (apenas leitura).
+                </span>
+              )}
             </div>
 
             {temAcesso("chamados") && (
@@ -291,8 +315,9 @@ export default function Dashboard() {
                   title="Painel de BI"
                   description="Relatórios e indicadores em tempo real."
                   icon={PieChart}
-                  onClick={() => navigate("/bi")}
+                  onClick={() => !viewOnly && navigate("/bi")}
                   variant="dark"
+                  disabled={viewOnly}
                 />
               )}
               {temAcesso("inventario") && (
@@ -301,15 +326,17 @@ export default function Dashboard() {
                     title="Inventário Geral"
                     description="Base completa de equipamentos e ativos."
                     icon={Search}
-                    onClick={() => navigate("/inventario")}
+                    onClick={() => !viewOnly && navigate("/inventario")}
                     variant="light"
+                    disabled={viewOnly}
                   />
                   <QuickActionCard
                     title="Saída de Equipamento"
                     description="Registrar transferência de patrimônio para outras unidades."
                     icon={Truck}
-                    onClick={() => navigate("/saida-equipamento")}
+                    onClick={() => !viewOnly && navigate("/saida-equipamento")}
                     variant="light"
+                    disabled={viewOnly}
                   />
                 </>
               )}
@@ -321,18 +348,26 @@ export default function Dashboard() {
   );
 }
 
-// Subcomponentes
+// Subcomponentes atualizados com suporte a disabled/viewOnly
 function StatCard({ title, value, color, icon: Icon }) {
   const themes = {
-    amber: "bg-amber-500 shadow-amber-100",
-    rose: "bg-rose-500 shadow-rose-100",
-    emerald: "bg-emerald-500 shadow-emerald-100",
-    blue: "bg-blue-600 shadow-blue-100",
+    amber: "bg-amber-50 shadow-amber-100 text-amber-600",
+    rose: "bg-rose-50 shadow-rose-100 text-rose-600",
+    emerald: "bg-emerald-50 shadow-emerald-100 text-emerald-600",
+    blue: "bg-blue-50 shadow-blue-100 text-blue-600",
   };
+  
+  const iconBg = {
+    amber: "bg-amber-500",
+    rose: "bg-rose-500",
+    emerald: "bg-emerald-500",
+    blue: "bg-blue-600",
+  };
+
   return (
-    <div className="bg-white p-7 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all group overflow-hidden">
+    <div className="bg-white p-7 rounded-[2rem] border border-slate-100 shadow-sm transition-all group overflow-hidden">
       <div className="flex justify-between items-center mb-6">
-        <div className={`${themes[color]} p-3 rounded-2xl text-white shadow-lg group-hover:scale-110 transition-transform`}>
+        <div className={`${iconBg[color]} p-3 rounded-2xl text-white shadow-lg`}>
           <Icon size={20} />
         </div>
         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -346,12 +381,14 @@ function StatCard({ title, value, color, icon: Icon }) {
   );
 }
 
-function QuickActionCard({ title, description, icon: Icon, onClick, variant }) {
+function QuickActionCard({ title, description, icon: Icon, onClick, variant, disabled }) {
   const isDark = variant === "dark";
   return (
     <div
-      onClick={onClick}
-      className={`group cursor-pointer rounded-[2rem] p-8 transition-all flex flex-col justify-between h-72 ${
+      onClick={disabled ? null : onClick}
+      className={`group rounded-[2rem] p-8 transition-all flex flex-col justify-between h-72 ${
+        disabled ? "opacity-60 cursor-not-allowed grayscale-[0.5]" : "cursor-pointer"
+      } ${
         isDark
           ? "bg-slate-900 text-white hover:bg-slate-800"
           : "bg-white border border-slate-200 text-slate-900 shadow-sm hover:border-blue-200"
@@ -367,8 +404,8 @@ function QuickActionCard({ title, description, icon: Icon, onClick, variant }) {
         </p>
       </div>
       <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-500">
-        Acessar Módulo{" "}
-        <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
+        {disabled ? "Visualização Apenas" : "Acessar Módulo"}
+        {!disabled && <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />}
       </div>
     </div>
   );

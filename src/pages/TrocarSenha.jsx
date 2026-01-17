@@ -68,6 +68,8 @@ const TrocarSenha = () => {
       }
 
       const userRef = doc(db, "usuarios", user.uid);
+      
+      // Reautenticação necessária para troca de senha
       const credential = EmailAuthProvider.credential(user.email, senhaAtual);
       await reauthenticateWithCredential(user, credential);
 
@@ -78,34 +80,47 @@ const TrocarSenha = () => {
       const historico = userData.historicoSenhas || [];
       const novoHash = CryptoJS.SHA256(novaSenha).toString();
 
+      // Verifica se a senha já foi usada
       if (historico.includes(novoHash)) {
         setLoading(false);
         return toast.error("Esta senha já foi usada anteriormente!");
       }
 
+      // 1. Atualiza no Firebase Auth
       await updatePassword(user, novaSenha);
 
+      // 2. Atualiza no Firestore
       const novoHistorico = [...historico, novoHash].slice(-5);
       await updateDoc(userRef, {
-        requiresPasswordChange: false,
+        requiresPasswordChange: false, // Libera o acesso no App.js
         ultimaTrocaSenha: serverTimestamp(),
         historicoSenhas: novoHistorico,
       });
 
       toast.success("Senha pessoal definida com sucesso!");
 
+      // 3. Finalização e Limpeza
       setTimeout(async () => {
         try {
+          // Removemos o ID da sessão atual para que o próximo login gere um novo e limpo
+          localStorage.removeItem("current_session_id");
           await signOut(auth);
-          navigate("/login");
+          
+          // Redirecionamento forçado para limpar o estado do React
+          window.location.href = "/login";
         } catch (err) {
-          navigate("/login");
+          window.location.href = "/login";
         }
       }, 2000);
+
     } catch (error) {
       console.error(error);
       if (error.code === "auth/wrong-password") {
         toast.error("Senha atual (provisória) incorreta!");
+      } else if (error.code === "auth/requires-recent-login") {
+        toast.error("Por segurança, faça login novamente antes de trocar a senha.");
+        await signOut(auth);
+        navigate("/login");
       } else {
         toast.error("Erro ao processar a troca de senha.");
       }
@@ -130,14 +145,10 @@ const TrocarSenha = () => {
   );
 
   return (
-    // AJUSTE RESPONSIVO: min-h-screen com py-10 permite scroll em telas pequenas
     <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center p-4 sm:p-6 lg:p-8 font-sans overflow-y-auto py-10">
-      {/* CARD: Ajustado max-w e padding para mobile */}
       <div className="w-full max-w-[450px] bg-white rounded-[2rem] sm:rounded-[3rem] shadow-2xl border border-slate-100 p-6 sm:p-10 relative overflow-hidden flex flex-col">
-        {/* Barra de destaque superior */}
         <div className="absolute top-0 left-0 w-full h-2 bg-blue-600"></div>
 
-        {/* HEADER RESPONSIVO */}
         <header className="text-center mb-6 sm:mb-8">
           <div className="inline-flex p-3 sm:p-4 bg-blue-50 rounded-2xl text-blue-600 mb-4 shadow-inner">
             <FiShield size={28} className="sm:w-8 sm:h-8" />
@@ -150,11 +161,7 @@ const TrocarSenha = () => {
           </p>
         </header>
 
-        <form
-          onSubmit={handleSubmit}
-          className="space-y-4 sm:space-y-6 flex-grow"
-        >
-          {/* CAMPO SENHA ATUAL */}
+        <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6 flex-grow">
           <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
               Senha Provisória Atual
@@ -166,7 +173,7 @@ const TrocarSenha = () => {
                 value={senhaAtual}
                 onChange={(e) => setSenhaAtual(e.target.value)}
                 className="w-full p-4 bg-slate-50 border-2 border-transparent rounded-2xl outline-none focus:border-blue-500 focus:bg-white transition-all pr-12 text-sm font-bold"
-                placeholder="Senha atual"
+                placeholder="Digite a senha provisória"
               />
               <button
                 type="button"
@@ -178,7 +185,6 @@ const TrocarSenha = () => {
             </div>
           </div>
 
-          {/* NOVA SENHA COM REGRAS */}
           <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
               Nova Senha Pessoal
@@ -201,7 +207,6 @@ const TrocarSenha = () => {
               </button>
             </div>
 
-            {/* GRID DE REGRAS RESPONSIVO */}
             <div className="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 grid grid-cols-2 gap-y-2 gap-x-1 sm:gap-2">
               <RegraItem condicao={validacoes.minimo} texto="8+ Letras" />
               <RegraItem condicao={validacoes.maiuscula} texto="Maiúscula" />
@@ -210,7 +215,6 @@ const TrocarSenha = () => {
             </div>
           </div>
 
-          {/* CONFIRMAÇÃO */}
           <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
               Confirmar Nova Senha
@@ -222,18 +226,14 @@ const TrocarSenha = () => {
                 value={confirmarSenha}
                 onChange={(e) => setConfirmarSenha(e.target.value)}
                 className="w-full p-4 bg-slate-50 border-2 border-transparent rounded-2xl outline-none focus:border-blue-500 focus:bg-white transition-all pr-12 text-sm font-bold"
-                placeholder="Repita a senha"
+                placeholder="Repita a nova senha"
               />
               <button
                 type="button"
                 onClick={() => setVerConfirmarSenha(!verConfirmarSenha)}
                 className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-500"
               >
-                {verConfirmarSenha ? (
-                  <FiEyeOff size={18} />
-                ) : (
-                  <FiEye size={18} />
-                )}
+                {verConfirmarSenha ? <FiEyeOff size={18} /> : <FiEye size={18} />}
               </button>
             </div>
           </div>
@@ -248,7 +248,6 @@ const TrocarSenha = () => {
           </button>
         </form>
 
-        {/* FOOTER RESPONSIVO */}
         <footer className="mt-8 pt-6 border-t border-slate-50 text-center">
           <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] sm:tracking-[0.3em]">
             SISTEMA DE SEGURANÇA RODHON
