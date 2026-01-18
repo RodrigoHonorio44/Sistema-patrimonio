@@ -8,14 +8,14 @@ import {
 import {
   FiRefreshCw, FiArrowLeft, FiLayers, FiFilter,
   FiCalendar, FiTrash2, FiTrendingUp, FiPrinter, 
-  FiBox, FiAlertCircle, FiChevronLeft, FiChevronRight
+  FiBox, FiAlertCircle, FiChevronLeft, FiChevronRight, FiPercent
 } from "react-icons/fi";
 
 const DashboardCenso = () => {
   const navigate = useNavigate();
 
   // Estados de Dados
-  const [stats, setStats] = useState({ total: 0, comPatrimonio: 0, semPatrimonio: 0, baixas: 0 });
+  const [stats, setStats] = useState({ total: 0, comPatrimonio: 0, semPatrimonio: 0, baixas: 0, taxaBaixa: 0 });
   const [dadosSetores, setDadosSetores] = useState([]);
   const [dadosEvolucao, setDadosEvolucao] = useState([]);
   const [unidadesDisponiveis, setUnidadesDisponiveis] = useState([]);
@@ -27,7 +27,6 @@ const DashboardCenso = () => {
   const [dataFim, setDataFim] = useState("");
   const [loading, setLoading] = useState(true);
   
-  // CONFIGURAÇÃO DE PAGINAÇÃO (12 ITENS)
   const [paginaAtual, setPaginaAtual] = useState(0);
   const itensPorPagina = 12;
 
@@ -56,35 +55,17 @@ const DashboardCenso = () => {
   }, [normalizar]);
 
   const parseDataComp = (dataStr) => {
-    if (!dataStr || dataStr === "N/A") return null;
+    if (!dataStr || dataStr === "N/A" || dataStr === "") return null;
     try {
       const apenasData = dataStr.trim().split(/[\s,]+/)[0];
       if (apenasData.includes("/")) {
         const [d, m, a] = apenasData.split("/");
-        return new Date(`${a.length === 2 ? '20'+a : a}-${m}-${d}T12:00:00`);
+        const anoFull = a.length === 2 ? `20${a}` : a;
+        return new Date(`${anoFull}-${m}-${d}T12:00:00`);
       }
       return new Date(apenasData + "T12:00:00");
     } catch (e) { return null; }
   };
-
-  const censoPatrimonio = useMemo(() => {
-    const contagem = dadosBrutos.chamados
-      .filter(c => filtroUnidade === "TODAS" || normalizar(c.unidade) === normalizar(filtroUnidade))
-      .reduce((acc, curr) => {
-        const eq = getVal(curr, "Equipamento") || "OUTROS";
-        acc[eq] = (acc[eq] || 0) + 1;
-        return acc;
-      }, {});
-    
-    return Object.entries(contagem)
-      .map(([nome, qtd]) => ({ nome, qtd }))
-      .sort((a, b) => b.qtd - a.qtd);
-  }, [dadosBrutos.chamados, filtroUnidade, getVal, normalizar]);
-
-  const totalPaginas = Math.ceil(censoPatrimonio.length / itensPorPagina);
-  const equipamentosExibidos = useMemo(() => {
-    return censoPatrimonio.slice(paginaAtual * itensPorPagina, (paginaAtual + 1) * itensPorPagina);
-  }, [censoPatrimonio, paginaAtual]);
 
   const processarDados = useCallback((chamados, baixados, unidadeFiltro, inicio, fim) => {
     const dInicio = inicio ? new Date(inicio + "T00:00:00") : null;
@@ -101,7 +82,8 @@ const DashboardCenso = () => {
 
     const baixasFiltradas = baixados.filter((item) => {
       const matchUnidade = unidadeFiltro === "TODAS" || normalizar(item.unidade) === normalizar(unidadeFiltro);
-      const dObj = parseDataComp(getVal(item, "Data da Baixa") || getVal(item, "Data"));
+      const dataBaixaStr = getVal(item, "Data da Baixa") || getVal(item, "Data");
+      const dObj = parseDataComp(dataBaixaStr);
       let matchData = true;
       if (dInicio && dObj) matchData = matchData && dObj >= dInicio;
       if (dFim && dObj) matchData = matchData && dObj <= dFim;
@@ -116,7 +98,17 @@ const DashboardCenso = () => {
       else semPat++;
     });
 
-    setStats({ total: filtrados.length, comPatrimonio: comPat, semPatrimonio: semPat, baixas: baixasFiltradas.length });
+    // Cálculo da Taxa de Baixas para o Card
+    const totalItensNoPeriodo = filtrados.length + baixasFiltradas.length;
+    const taxa = totalItensNoPeriodo > 0 ? ((baixasFiltradas.length / totalItensNoPeriodo) * 100).toFixed(1) : 0;
+
+    setStats({ 
+        total: filtrados.length, 
+        comPatrimonio: comPat, 
+        semPatrimonio: semPat, 
+        baixas: baixasFiltradas.length,
+        taxaBaixa: taxa 
+    });
 
     const porUnidade = filtrados.reduce((acc, c) => {
       const u = c.unidade || "N/A";
@@ -125,13 +117,22 @@ const DashboardCenso = () => {
     }, {});
     setDadosSetores(Object.keys(porUnidade).map(k => ({ name: k, total: porUnidade[k] })).sort((a,b) => b.total - a.total));
 
+    // CORREÇÃO DO GRÁFICO: Agrupamento por Data formatada
     const porDia = filtrados.reduce((acc, c) => {
-      const dStr = getVal(c, "Data").split(/[\s,]+/)[0];
-      if (dStr && dStr !== "N/A") acc[dStr] = (acc[dStr] || 0) + 1;
+      const dRaw = getVal(c, "Data").split(/[\s,]+/)[0];
+      const dObj = parseDataComp(dRaw);
+      if (dObj && !isNaN(dObj)) {
+        const dStr = dObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        acc[dStr] = (acc[dStr] || 0) + 1;
+      }
       return acc;
     }, {});
-    setDadosEvolucao(Object.keys(porDia).map(k => ({ data: k, dataObj: parseDataComp(k), qtd: porDia[k] })).sort((a,b) => a.dataObj - b.dataObj).slice(-15));
-    
+
+    const evolucaoArray = Object.keys(porDia)
+      .map(k => ({ data: k, qtd: porDia[k], sortKey: k.split('/').reverse().join('') }))
+      .sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+    setDadosEvolucao(evolucaoArray);
     setPaginaAtual(0);
   }, [getVal, normalizar]);
 
@@ -168,6 +169,20 @@ const DashboardCenso = () => {
   };
 
   useEffect(() => { carregarDadosSheets(); }, []);
+
+  const censoPatrimonio = useMemo(() => {
+    const contagem = dadosBrutos.chamados
+      .filter(c => filtroUnidade === "TODAS" || normalizar(c.unidade) === normalizar(filtroUnidade))
+      .reduce((acc, curr) => {
+        const eq = getVal(curr, "Equipamento") || "OUTROS";
+        acc[eq] = (acc[eq] || 0) + 1;
+        return acc;
+      }, {});
+    return Object.entries(contagem).map(([nome, qtd]) => ({ nome, qtd })).sort((a, b) => b.qtd - a.qtd);
+  }, [dadosBrutos.chamados, filtroUnidade, getVal, normalizar]);
+
+  const totalPaginas = Math.ceil(censoPatrimonio.length / itensPorPagina);
+  const equipamentosExibidos = censoPatrimonio.slice(paginaAtual * itensPorPagina, (paginaAtual + 1) * itensPorPagina);
 
   if (loading) return (
     <div className="h-screen flex flex-col items-center justify-center bg-slate-50">
@@ -209,25 +224,25 @@ const DashboardCenso = () => {
         </div>
       </section>
 
-      {/* 2. Métricas */}
+      {/* 2. Métricas Atualizadas */}
       <section className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <MetricCard label="Total Geral" value={stats.total} color="blue" icon={FiLayers} />
-        <MetricCard label="Patrimoniados" value={stats.comPatrimonio} color="emerald" icon={FiBox} />
+        <MetricCard label="Total Ativos" value={stats.total} color="blue" icon={FiLayers} />
+        <MetricCard label="Identificados" value={stats.comPatrimonio} color="emerald" icon={FiBox} />
         <MetricCard label="Sem Patrimônio" value={stats.semPatrimonio} color="amber" icon={FiAlertCircle} />
-        <MetricCard label="Total Baixados" value={stats.baixas} color="rose" icon={FiTrash2} />
+        <MetricCard label="Taxa Inutilizados" value={`${stats.taxaBaixa}%`} color="rose" icon={FiPercent} subText={`${stats.baixas} itens baixados`} />
       </section>
 
-      {/* 3. Gráficos */}
+      {/* 3. Gráficos Corrigidos */}
       <section className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-          <h3 className="text-sm font-black mb-6 uppercase tracking-widest text-slate-400 flex items-center gap-2"><FiLayers className="text-blue-500" /> Itens por Unidade</h3>
+          <h3 className="text-sm font-black mb-6 uppercase tracking-widest text-slate-400 flex items-center gap-2"><FiLayers className="text-blue-500" /> Distribuição por Unidade</h3>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={dadosSetores}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" fontSize={10} axisLine={false} tickLine={false} angle={-25} textAnchor="end" height={60} />
-                <YAxis axisLine={false} tickLine={false} />
-                <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{ borderRadius: "16px", border: "none" }} />
+                <XAxis dataKey="name" fontSize={9} axisLine={false} tickLine={false} interval={0} angle={-15} textAnchor="end" height={50} />
+                <YAxis axisLine={false} tickLine={false} fontSize={10} />
+                <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{ borderRadius: "16px", border: "none", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)" }} />
                 <Bar dataKey="total" fill="#3b82f6" radius={[6, 6, 0, 0]}>
                   {dadosSetores.map((_, index) => <Cell key={`cell-${index}`} fill={index === 0 ? "#1d4ed8" : "#60a5fa"} />)}
                 </Bar>
@@ -235,23 +250,31 @@ const DashboardCenso = () => {
             </ResponsiveContainer>
           </div>
         </div>
+
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-          <h3 className="text-sm font-black mb-6 uppercase tracking-widest text-slate-400 flex items-center gap-2"><FiTrendingUp className="text-amber-500" /> Curva de Crescimento</h3>
+          <h3 className="text-sm font-black mb-6 uppercase tracking-widest text-slate-400 flex items-center gap-2"><FiTrendingUp className="text-amber-500" /> Evolução de Cadastros</h3>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={dadosEvolucao}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="data" fontSize={10} axisLine={false} tickLine={false} />
-                <YAxis axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ borderRadius: "16px", border: "none" }} />
-                <Line type="monotone" dataKey="qtd" stroke="#f59e0b" strokeWidth={4} dot={{ r: 5, fill: "#f59e0b", strokeWidth: 2, stroke: "#fff" }} />
+                <YAxis axisLine={false} tickLine={false} fontSize={10} />
+                <Tooltip contentStyle={{ borderRadius: "16px", border: "none", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)" }} />
+                <Line 
+                  type="monotone" 
+                  dataKey="qtd" 
+                  stroke="#f59e0b" 
+                  strokeWidth={4} 
+                  dot={{ r: 4, fill: "#f59e0b", strokeWidth: 2, stroke: "#fff" }} 
+                  activeDot={{ r: 6, strokeWidth: 0 }}
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
       </section>
 
-      {/* 4. SEÇÃO DE CARDS (CORRIGIDA) */}
+      {/* 4. SEÇÃO DE CARDS */}
       <section className="max-w-7xl mx-auto mb-12">
         <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
           <div className="p-6 md:p-8">
@@ -259,13 +282,10 @@ const DashboardCenso = () => {
               <FiBox className="text-emerald-500" /> Detalhamento por Equipamento ({censoPatrimonio.length})
             </h3>
 
-            {/* Grid de Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6 min-h-[320px]">
               {equipamentosExibidos.map((item, idx) => (
-                <div key={idx} className="bg-white border border-slate-100 p-5 rounded-3xl text-center shadow-sm hover:border-blue-400 hover:shadow-md transition-all animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <span className="text-[10px] font-black text-slate-400 uppercase block mb-3 h-10 leading-tight overflow-hidden">
-                    {item.nome}
-                  </span>
+                <div key={idx} className="bg-white border border-slate-100 p-5 rounded-3xl text-center shadow-sm hover:border-blue-400 hover:shadow-md transition-all">
+                  <span className="text-[10px] font-black text-slate-400 uppercase block mb-3 h-10 leading-tight overflow-hidden">{item.nome}</span>
                   <div className="text-3xl font-black text-slate-800 mb-1">{item.qtd}</div>
                   <div className="inline-block text-[9px] font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-full uppercase">UNIDADES</div>
                 </div>
@@ -273,56 +293,11 @@ const DashboardCenso = () => {
             </div>
           </div>
 
-          {/* PAGINAÇÃO INTERNA (CORRIGIDA) */}
-          <div className="bg-slate-50/50 border-t border-slate-100 p-6 no-print">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
-                Página {paginaAtual + 1} de {totalPaginas}
-              </span>
-
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={() => setPaginaAtual(p => Math.max(0, p - 1))}
-                  disabled={paginaAtual === 0}
-                  className="p-3 rounded-2xl bg-white border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-white hover:border-blue-500 hover:text-blue-600 transition-all shadow-sm"
-                >
-                  <FiChevronLeft size={20}/>
-                </button>
-                
-                {/* Seletor de Página Simplificado para evitar quebra de layout */}
-                <div className="flex items-center bg-white border border-slate-200 rounded-2xl p-1 shadow-sm">
-                   {Array.from({ length: Math.min(5, totalPaginas) }).map((_, i) => {
-                      // Lógica básica para mostrar páginas próximas à atual
-                      let pageNum = i;
-                      if (totalPaginas > 5) {
-                        if (paginaAtual > 2) pageNum = paginaAtual - 2 + i;
-                        if (pageNum >= totalPaginas) pageNum = totalPaginas - 5 + i;
-                      }
-                      
-                      if (pageNum < 0 || pageNum >= totalPaginas) return null;
-
-                      return (
-                        <button
-                          key={pageNum}
-                          onClick={() => setPaginaAtual(pageNum)}
-                          className={`w-10 h-10 rounded-xl text-xs font-black transition-all ${paginaAtual === pageNum ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
-                        >
-                          {pageNum + 1}
-                        </button>
-                      );
-                   })}
-                </div>
-
-                <button 
-                  onClick={() => setPaginaAtual(p => Math.min(totalPaginas - 1, p + 1))}
-                  disabled={paginaAtual >= totalPaginas - 1}
-                  className="p-3 rounded-2xl bg-white border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-white hover:border-blue-500 hover:text-blue-600 transition-all shadow-sm"
-                >
-                  <FiChevronRight size={20}/>
-                </button>
-              </div>
-
-              <div className="hidden md:block w-32"></div> {/* Spacer para centralizar no desktop */}
+          <div className="bg-slate-50/50 border-t border-slate-100 p-6 no-print flex flex-col md:flex-row items-center justify-between gap-6">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Página {paginaAtual + 1} de {totalPaginas || 1}</span>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setPaginaAtual(p => Math.max(0, p - 1))} disabled={paginaAtual === 0} className="p-3 rounded-2xl bg-white border border-slate-200 disabled:opacity-30 hover:border-blue-500 transition-all shadow-sm"><FiChevronLeft size={20}/></button>
+              <button onClick={() => setPaginaAtual(p => Math.min(totalPaginas - 1, p + 1))} disabled={paginaAtual >= totalPaginas - 1} className="p-3 rounded-2xl bg-white border border-slate-200 disabled:opacity-30 hover:border-blue-500 transition-all shadow-sm"><FiChevronRight size={20}/></button>
             </div>
           </div>
         </div>
@@ -331,20 +306,23 @@ const DashboardCenso = () => {
   );
 };
 
-const MetricCard = ({ label, value, color, icon: Icon }) => {
+const MetricCard = ({ label, value, color, icon: Icon, subText }) => {
   const variants = {
     blue: "bg-blue-600 shadow-blue-100",
     emerald: "bg-emerald-600 shadow-emerald-100",
     amber: "bg-amber-500 shadow-amber-100",
-    rose: "bg-rose-500 shadow-rose-100",
+    rose: "bg-red-600 shadow-red-100", // Cor vermelha vibrante
   };
   return (
-    <div className={`${variants[color]} p-6 rounded-3xl text-white shadow-xl`}>
-      <div className="flex justify-between items-start mb-2 opacity-80">
+    <div className={`${variants[color]} p-6 rounded-3xl text-white shadow-xl flex flex-col justify-between`}>
+      <div className="flex justify-between items-start opacity-80">
         <span className="text-[10px] font-black uppercase tracking-tighter">{label}</span>
         <Icon size={18} />
       </div>
-      <div className="text-3xl font-black">{value}</div>
+      <div>
+        <div className="text-3xl font-black mt-2">{value}</div>
+        {subText && <p className="text-[9px] font-bold opacity-70 uppercase mt-1 tracking-wider">{subText}</p>}
+      </div>
     </div>
   );
 };

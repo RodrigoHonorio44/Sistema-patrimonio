@@ -3,7 +3,11 @@ import { db } from '../api/Firebase';
 import { collection, addDoc, query, where, getDocs, updateDoc, doc, serverTimestamp, limit } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { FiTruck, FiSearch, FiArrowLeft, FiPackage, FiEdit3, FiX, FiMapPin, FiUser, FiFilter } from 'react-icons/fi';
+import { FiTruck, FiSearch, FiArrowLeft, FiPackage, FiX, FiMapPin, FiFilter } from 'react-icons/fi';
+
+// IMPORTAÇÃO DOS COMPONENTES
+import Header from "../components/Header";
+import Footer from "../components/Footer";
 
 const SaidaEquipamento = () => {
     const [unidadeFiltro, setUnidadeFiltro] = useState('TODAS');
@@ -22,7 +26,6 @@ const SaidaEquipamento = () => {
         responsavelRecebimento: ''
     });
 
-    // LISTA PADRONIZADA COM O BANCO DE DADOS
     const unidades = [
         "HOSPITAL CONDE", 
         "UPA INOÃ", 
@@ -32,7 +35,6 @@ const SaidaEquipamento = () => {
         "SAMU PONTA NEGRA"
     ];
 
-    // Função vital para que "s/p", "S/P", "sp" sejam lidos como "SP"
     const tratarSP = (t) => t ? t.toUpperCase().replace(/\//g, '').trim() : "";
 
     const executarBusca = async (tipo) => {
@@ -46,7 +48,6 @@ const SaidaEquipamento = () => {
             if (tipo === 'patrimonio') {
                 const termo = patrimonioBusca.toUpperCase().trim();
                 
-                // Se o usuário buscar "SP" no campo de patrimônio, avisamos para usar o de nome
                 if (tratarSP(termo) === 'SP') {
                     toast.info("Para itens 'SP', use a busca por NOME.");
                     setLoading(false);
@@ -64,7 +65,6 @@ const SaidaEquipamento = () => {
                 const termoOriginal = nomeBusca.toLowerCase().trim();
                 if (!termoOriginal) { toast.warn("Digite o nome ou 'SP'"); setLoading(false); return; }
                 
-                // Puxamos os itens ativos para filtrar localmente (devido ao S/P)
                 let qGeral = unidadeFiltro === 'TODAS'
                     ? query(ativosRef, where("status", "==", "Ativo"), limit(300))
                     : query(ativosRef, where("unidade", "==", unidadeFiltro), where("status", "==", "Ativo"), limit(300));
@@ -77,11 +77,8 @@ const SaidaEquipamento = () => {
                     .filter(item => {
                         const nomeNoBanco = item.nome ? item.nome.toLowerCase() : "";
                         const patNoBanco = item.patrimonio || "";
-                        
-                        // Verifica se o nome contém o termo OU se ambos são "SP" (independente de barra ou caixa)
                         const matchNome = nomeNoBanco.includes(termoOriginal);
                         const matchSP = (termoBuscaNormalizado === 'SP' && tratarSP(patNoBanco) === 'SP');
-
                         return matchNome || matchSP;
                     });
             }
@@ -120,11 +117,11 @@ const SaidaEquipamento = () => {
         try {
             const ativoRef = doc(db, "ativos", itemSelecionado.id);
             
-            // Se era SP e ganhou um novo código, atualizamos o patrimônio também
             const patrimonioFinal = (tratarSP(itemSelecionado.patrimonio) === 'SP' && novoPatrimonioParaSP)
                 ? novoPatrimonioParaSP.toUpperCase()
                 : itemSelecionado.patrimonio;
 
+            // 1. ATUALIZA O ATIVO NO FIREBASE (MUDA A LOCALIZAÇÃO ATUAL)
             await updateDoc(ativoRef, {
                 unidade: dadosSaida.novaUnidade,
                 setor: dadosSaida.novoSetor,
@@ -132,6 +129,7 @@ const SaidaEquipamento = () => {
                 ultimaMovimentacao: serverTimestamp()
             });
 
+            // 2. REGISTRA O LOG DE MOVIMENTAÇÃO NO FIREBASE
             await addDoc(collection(db, "saidaEquipamento"), {
                 ativoId: itemSelecionado.id,
                 patrimonio: patrimonioFinal,
@@ -145,7 +143,30 @@ const SaidaEquipamento = () => {
                 dataSaida: serverTimestamp()
             });
 
-            toast.success("Transferência concluída!");
+            // 3. SINCRONIZAÇÃO COM A PLANILHA GOOGLE (INVENTÁRIO)
+            try {
+                const payloadPlanilha = {
+                    tipoOperacao: "TRANSFERENCIA", // Para o script identificar
+                    patrimonio: patrimonioFinal,
+                    nome: itemSelecionado.nome,
+                    origem: itemSelecionado.unidade,
+                    destino: dadosSaida.novaUnidade,
+                    setorDestino: dadosSaida.novoSetor,
+                    responsavel: dadosSaida.responsavelRecebimento,
+                    data: new Date().toLocaleString('pt-BR')
+                };
+
+                fetch('https://script.google.com/macros/s/AKfycbxR6EGGtOkeZCUMXA4y2hggPXNPUZL80L4acj9CP9MxVxqSbOrYcsyQ2OY2aFpYabsAEA/exec', {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payloadPlanilha)
+                });
+            } catch (errPlanilha) {
+                console.error("Erro ao enviar para planilha:", errPlanilha);
+            }
+
+            toast.success("Transferência concluída e planilha atualizada!");
             fecharModal();
             setItensEncontrados([]);
         } catch (error) {
@@ -157,6 +178,8 @@ const SaidaEquipamento = () => {
 
     return (
         <div className="flex flex-col min-h-screen bg-slate-50 font-sans antialiased text-slate-900">
+            <Header />
+
             <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm px-6 h-20 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                     <div className="p-2.5 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-100">
@@ -169,9 +192,8 @@ const SaidaEquipamento = () => {
                 </Link>
             </header>
 
-            <main className="max-w-7xl mx-auto px-6 py-10 w-full">
-                
-                {/* FILTRO DE UNIDADE COM DESIGN ESCURO PARA DESTAQUE */}
+            <main className="flex-grow max-w-7xl mx-auto px-6 py-10 w-full">
+                {/* FILTRO DE UNIDADE */}
                 <div className="mb-8 bg-slate-900 p-2 rounded-3xl shadow-xl flex flex-col md:flex-row items-center gap-2 border border-slate-700">
                     <div className="flex items-center gap-3 px-6 py-3 bg-blue-600 rounded-2xl text-white min-w-max">
                         <FiFilter />
@@ -249,7 +271,6 @@ const SaidaEquipamento = () => {
                 </div>
             </main>
 
-            {/* MODAL DE SAÍDA */}
             {showModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={fecharModal}></div>
@@ -305,6 +326,8 @@ const SaidaEquipamento = () => {
                     </div>
                 </div>
             )}
+
+            <Footer />
         </div>
     );
 };
